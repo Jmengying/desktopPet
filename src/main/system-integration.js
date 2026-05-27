@@ -1,5 +1,4 @@
 const { Tray, Menu, nativeImage, powerMonitor } = require('electron');
-const path = require('path');
 
 class SystemIntegration {
   constructor(stateManager) {
@@ -7,13 +6,14 @@ class SystemIntegration {
     this.tray = null;
     this.idleCheckInterval = null;
     this.lastInputTime = Date.now();
-    this.idleState = 'active'; // active, idle, sleeping
+    this.idleState = 'active';
   }
 
   createTray() {
-    const iconPath = path.join(__dirname, '../../assets/icons/tray.png');
-    const icon = nativeImage.createEmpty();
+    // Create a programmatic 16x16 pink circle icon
+    const icon = this.createTrayIcon();
     this.tray = new Tray(icon);
+    this.tray.setToolTip('白玉 — 桌面宠物');
 
     const contextMenu = Menu.buildFromTemplate([
       { label: '显示宠物', click: () => {} },
@@ -21,10 +21,33 @@ class SystemIntegration {
       { label: '退出', click: () => require('electron').app.quit() }
     ]);
 
-    this.tray.setToolTip('白玉 — 桌面宠物');
     this.tray.setContextMenu(contextMenu);
-
     this.startIdleDetection();
+  }
+
+  createTrayIcon() {
+    const size = 16;
+    const canvas = Buffer.alloc(size * size * 4);
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const idx = (y * size + x) * 4;
+        const dx = x - size / 2;
+        const dy = y - size / 2;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < size / 2 - 1) {
+          canvas[idx] = 255;     // R
+          canvas[idx + 1] = 182; // G
+          canvas[idx + 2] = 193; // B
+          canvas[idx + 3] = 255; // A
+        } else {
+          canvas[idx + 3] = 0;
+        }
+      }
+    }
+
+    return nativeImage.createFromBuffer(canvas, { width: size, height: size });
   }
 
   startIdleDetection() {

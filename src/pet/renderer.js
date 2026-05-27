@@ -28,8 +28,9 @@ class PetRenderer {
     this.walkingEnabled = true;
     this.walkTarget = null;
     this.position = { x: 0, y: 0 };
-    this.walkSpeed = 1.5;
+    this.walkSpeed = 90; // pixels per second
     this.nextWalkDelay = 30 + Math.random() * 60;
+    this.screenWidth = 1920; // updated via IPC
 
     // Mouse follow
     this.followEnabled = true;
@@ -57,6 +58,7 @@ class PetRenderer {
 
     this.setupCanvas();
     this.setupInteractions();
+    this.requestScreenSize();
     this.startRenderLoop();
   }
 
@@ -67,11 +69,33 @@ class PetRenderer {
     this.ctx.scale(dpr, dpr);
   }
 
+  requestScreenSize() {
+    if (window.petAPI) {
+      window.petAPI.sendAction('get-screen-size');
+      // Listen for response
+      window.petAPI.onStateUpdate((data) => {
+        if (data.key === 'screenWidth') this.screenWidth = data.value;
+      });
+    }
+  }
+
   setupInteractions() {
-    // Mouse move for follow
+    // Mouse move for follow (use screen coordinates)
     document.addEventListener('mousemove', (e) => {
-      this.mouseX = e.clientX;
-      this.mouseY = e.clientY;
+      this.mouseX = e.screenX;
+      this.mouseY = e.screenY;
+    });
+
+    // Mouse enter: disable click-through so we can receive clicks
+    this.canvas.addEventListener('mouseenter', () => {
+      this.expression.setExpression('curious', 0.1);
+      if (window.petAPI) window.petAPI.sendAction('mouse-enter');
+    });
+
+    // Mouse leave: re-enable click-through
+    this.canvas.addEventListener('mouseleave', () => {
+      this.expression.setExpression('default', 0.08);
+      if (window.petAPI) window.petAPI.sendAction('mouse-leave');
     });
 
     // Click
@@ -81,14 +105,6 @@ class PetRenderer {
       this.expression.setExpression('happy', 0.15);
       this.playSound('click');
       setTimeout(() => this.expression.setExpression('default', 0.08), 1500);
-    });
-
-    // Mouse enter/leave for expression
-    this.canvas.addEventListener('mouseenter', () => {
-      this.expression.setExpression('curious', 0.1);
-    });
-    this.canvas.addEventListener('mouseleave', () => {
-      this.expression.setExpression('default', 0.08);
     });
 
     // Drag
@@ -145,6 +161,8 @@ class PetRenderer {
       { icon: '\u{1F5B1}️', label: '鼠标跟随', action: 'toggle-follow', state: () => this.followEnabled },
       { icon: '✨', label: '随机动作', action: 'toggle-events', state: () => this.randomEventsEnabled },
       { icon: '\u{1F6B6}', label: '桌面走动', action: 'toggle-walking', state: () => this.walkingEnabled },
+      { type: 'separator' },
+      { icon: '⚙️', label: '设置', action: 'open-config' },
       { type: 'separator' },
       { icon: '\u{1F6AA}', label: '退出软件', action: 'quit', color: '#e74c3c' }
     ];
@@ -205,6 +223,9 @@ class PetRenderer {
         this.walkingEnabled = !this.walkingEnabled;
         if (window.petAPI) window.petAPI.sendAction('state-changed', { key: 'walkingEnabled', value: this.walkingEnabled });
         break;
+      case 'open-config':
+        if (window.petAPI) window.petAPI.openConfig();
+        break;
       case 'quit':
         if (window.petAPI) window.petAPI.quitApp();
         break;
@@ -219,6 +240,10 @@ class PetRenderer {
     if (state.key === 'randomEvents') this.randomEventsEnabled = state.value;
     if (state.key === 'walkingEnabled') this.walkingEnabled = state.value;
     if (state.key === 'idleState') this.handleIdleState(state.value);
+    if (state.key === 'screenWidth') this.screenWidth = state.value;
+    if (state.key === 'petSize') {
+      this.scale = state.value / 200;
+    }
   }
 
   handleIdleState(state) {
@@ -265,7 +290,7 @@ class PetRenderer {
       const dt = Math.min((now - this.lastTime) / 1000, 0.1);
       this.lastTime = now;
       this.update(dt);
-      this.render();
+      this.render(dt);
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -313,14 +338,22 @@ class PetRenderer {
         this.nextWalkDelay = 10 + Math.random() * 30;
         return;
       }
+      const speed = this.walkSpeed * dt;
       this.velocity = { x: dir * this.walkSpeed, y: 0 };
-      this.position.x += this.velocity.x;
+      this.position.x += dir * speed;
       this.facing = dir;
 
-      const halfW = window.innerWidth / 2;
-      if (this.position.x < -halfW + 50 || this.position.x > halfW - 50) {
+      // Edge detection using screen width
+      const halfScreen = this.screenWidth / 2;
+      if (this.position.x < -halfScreen + 100 || this.position.x > halfScreen - 100) {
         this.walkTarget = null;
         this.velocity = { x: 0, y: 0 };
+        this.facing = -this.facing; // turn around
+      }
+
+      // Move the window
+      if (window.petAPI) {
+        window.petAPI.sendAction('walk-move', { x: this.position.x });
       }
     } else {
       this.velocity = { x: 0, y: 0 };
@@ -339,8 +372,11 @@ class PetRenderer {
       return;
     }
 
-    const dx = this.mouseX - window.innerWidth / 2;
-    const dy = this.mouseY - window.innerHeight / 2;
+    // Use screen center for follow calculation
+    const centerX = window.screenX + window.innerWidth / 2;
+    const centerY = window.screenY + window.innerHeight / 2;
+    const dx = this.mouseX - centerX;
+    const dy = this.mouseY - centerY;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < this.followRadius) {
@@ -389,7 +425,7 @@ class PetRenderer {
     }
   }
 
-  render() {
+  render(dt) {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
     ctx.save();
@@ -402,10 +438,10 @@ class PetRenderer {
     const physics = this.physics.springs;
     const expr = this.expression.blendValues;
 
-    // Idle animation offsets
+    // Idle animation offsets (frame-rate independent)
+    this.idleAnimTime += dt;
     const idleSway = Math.sin(this.idleAnimTime * 1.8) * 2;
     const breathe = Math.sin(this.idleAnimTime * 2) * 1.5;
-    this.idleAnimTime += 0.016;
 
     // Walk bounce
     const walkBounce = Math.abs(this.velocity.x) > 0.1 ? Math.abs(Math.sin(Date.now() * 0.008)) * 3 : 0;
@@ -547,7 +583,8 @@ window.addEventListener('DOMContentLoaded', () => {
         renderer.onStateUpdate({ key: 'followMouse', value: state.followMouse });
         renderer.onStateUpdate({ key: 'randomEvents', value: state.randomEvents });
         renderer.onStateUpdate({ key: 'walkingEnabled', value: state.walkingEnabled });
+        renderer.onStateUpdate({ key: 'petSize', value: state.petSize });
       }
-    });
+    }).catch(() => {});
   }
 });

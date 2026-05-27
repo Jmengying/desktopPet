@@ -44,7 +44,7 @@ class WindowManager {
 
   setIgnoreMouseEvents(ignore) {
     if (this.petWindow) {
-      this.petWindow.setIgnoreMouseEvents(ignore, { forward: true });
+      this.petWindow.setIgnoreMouseEvents(ignore, { forward: ignore });
     }
   }
 

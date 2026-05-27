@@ -15,10 +15,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (window.configAPI) {
     const state = await window.configAPI.getState();
-    if (state.petSize) document.getElementById('petSize').value = state.petSize;
-    if (state.opacity) document.getElementById('opacity').value = state.opacity * 100;
+    if (state.petSize !== undefined) document.getElementById('petSize').value = state.petSize;
+    if (state.opacity !== undefined) document.getElementById('opacity').value = state.opacity * 100;
     if (state.soundEnabled !== undefined) document.getElementById('soundEnabled').checked = state.soundEnabled;
-    if (state.soundVolume) document.getElementById('soundVolume').value = state.soundVolume * 100;
+    if (state.soundVolume !== undefined) document.getElementById('soundVolume').value = state.soundVolume * 100;
     if (state.followMouse !== undefined) document.getElementById('followMouse').checked = state.followMouse;
     if (state.randomEvents !== undefined) document.getElementById('randomEvents').checked = state.randomEvents;
     if (state.walkingEnabled !== undefined) document.getElementById('walkingEnabled').checked = state.walkingEnabled;
