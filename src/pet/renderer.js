@@ -10,8 +10,8 @@ class PetRenderer {
     this.expression = new ExpressionSystem();
     this.physics = new PhysicsSystem();
 
-    this.width = 200;
-    this.height = 200;
+    this.width = 250;
+    this.height = 300;
     this.scale = 1;
     this.opacity = 1;
     this.lastTime = performance.now();
@@ -446,17 +446,36 @@ class PetRenderer {
     // Walk bounce
     const walkBounce = Math.abs(this.velocity.x) > 0.1 ? Math.abs(Math.sin(Date.now() * 0.008)) * 3 : 0;
 
+    // Draw order: hairBack, tail, legs, body, collar, skirt, arms, head, face, hair, ears
+
+    // Hair back layer
     this.drawPart(ctx, 'hairBack', BAIYU_PARTS.hairBack, physics);
+
+    // Tail
     this.drawPart(ctx, 'tail1', BAIYU_PARTS.tail1, physics);
     this.drawPart(ctx, 'tail2', BAIYU_PARTS.tail2, physics);
     this.drawPart(ctx, 'tail3', BAIYU_PARTS.tail3, physics);
 
+    // Legs (behind body)
+    this.drawPart(ctx, 'legLeft', BAIYU_PARTS.legLeft, physics);
+    this.drawPart(ctx, 'legRight', BAIYU_PARTS.legRight, physics);
+    this.drawPart(ctx, 'shoeLeft', BAIYU_PARTS.shoeLeft, physics);
+    this.drawPart(ctx, 'shoeRight', BAIYU_PARTS.shoeRight, physics);
+
     ctx.save();
     ctx.translate(idleSway, -walkBounce + breathe);
+
+    // Body & clothing
     this.drawPart(ctx, 'body', BAIYU_PARTS.body, physics);
+    this.drawPart(ctx, 'collar', BAIYU_PARTS.collar, physics);
+    this.drawPart(ctx, 'bow', BAIYU_PARTS.bow, physics);
+    this.drawPart(ctx, 'skirt', BAIYU_PARTS.skirt, physics);
     this.drawPart(ctx, 'armLeft', BAIYU_PARTS.armLeft, physics);
+
+    // Head
     this.drawPart(ctx, 'head', BAIYU_PARTS.head, physics);
 
+    // Face (rotates with head)
     ctx.save();
     ctx.rotate(this.currentHeadAngle * Math.PI / 180);
     this.drawPart(ctx, 'hairFront', BAIYU_PARTS.hairFront, physics);
@@ -464,6 +483,7 @@ class PetRenderer {
     this.drawPart(ctx, 'hairRight', BAIYU_PARTS.hairRight, physics);
     this.drawEye(ctx, 'eyeLeft', BAIYU_PARTS.eyeLeft, expr);
     this.drawEye(ctx, 'eyeRight', BAIYU_PARTS.eyeRight, expr);
+    this.drawNose(ctx);
     this.drawMouth(ctx, BAIYU_PARTS.mouth, expr);
     this.drawBlush(ctx, 'blushLeft', BAIYU_PARTS.blushLeft);
     this.drawBlush(ctx, 'blushRight', BAIYU_PARTS.blushRight);
@@ -506,33 +526,61 @@ class PetRenderer {
     ctx.translate(bone.worldX, bone.worldY);
 
     if (this.isBlinking) {
-      ctx.strokeStyle = '#2D1B4E';
+      // Blink: curved line
+      ctx.strokeStyle = '#4A3B6B';
       ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(-6, 0);
-      ctx.lineTo(6, 0);
+      ctx.moveTo(-7, 0);
+      ctx.quadraticCurveTo(0, 3, 7, 0);
       ctx.stroke();
       ctx.restore();
       return;
     }
 
     ctx.scale(1, eyeExpr.scaleY);
+
+    // Eye white (slightly oval)
     ctx.fillStyle = '#FFFFFF';
     ctx.beginPath();
-    ctx.ellipse(0, 0, 8, 10, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 9, 12, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = part.fill;
+
+    // Iris (large, colorful)
+    const gradient = ctx.createRadialGradient(0, eyeExpr.pupilY, 0, 0, eyeExpr.pupilY, 8);
+    gradient.addColorStop(0, '#9B7ED8');
+    gradient.addColorStop(0.6, part.fill);
+    gradient.addColorStop(1, '#4A3B6B');
+    ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.ellipse(0, eyeExpr.pupilY, 6, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, eyeExpr.pupilY + 1, 7, 9, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    // Pupil
     ctx.fillStyle = '#2D1B4E';
     ctx.beginPath();
-    ctx.ellipse(0, eyeExpr.pupilY + 1, 3, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, eyeExpr.pupilY + 2, 3.5, 5, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = part.highlight;
+
+    // Main highlight (big)
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
-    ctx.ellipse(-2, -3, 2, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(-3, -4, 3, 3.5, -0.3, 0, Math.PI * 2);
     ctx.fill();
+
+    // Secondary highlight (small)
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.ellipse(2, 2, 1.5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eye outline
+    ctx.strokeStyle = '#4A3B6B';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 12, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
     ctx.restore();
   }
 
@@ -566,6 +614,18 @@ class PetRenderer {
     ctx.fillStyle = part.fill;
     ctx.beginPath();
     ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  drawNose(ctx) {
+    const bone = this.skeleton.getBone('head');
+    if (!bone) return;
+    ctx.save();
+    ctx.translate(bone.worldX, bone.worldY + 3);
+    ctx.fillStyle = '#FFB6C1';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 2, 1.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

@@ -11,13 +11,14 @@ class WindowManager {
 
   createPetWindow() {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-    const petSize = this.stateManager.get('petSize', 200);
+    const petWidth = 250;
+    const petHeight = 300;
 
     this.petWindow = new BrowserWindow({
-      width: petSize,
-      height: petSize,
-      x: width - petSize - 50,
-      y: height - petSize - 50,
+      width: petWidth,
+      height: petHeight,
+      x: width - petWidth - 50,
+      y: height - petHeight - 50,
       transparent: true,
       frame: false,
       alwaysOnTop: true,
