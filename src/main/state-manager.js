@@ -6,6 +6,10 @@ class StateManager {
     };
   }
 
+  get(key, defaultValue) {
+    return this.state[key] !== undefined ? this.state[key] : defaultValue;
+  }
+
   getState() {
     return this.state;
   }
