@@ -26,8 +26,8 @@ class WindowManager {
       hasShadow: false,
       webPreferences: {
         preload: path.join(__dirname, '../pet/preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false
+        contextIsolation: false,
+        nodeIntegration: true
       }
     });
 
@@ -72,8 +72,8 @@ class WindowManager {
       resizable: false,
       webPreferences: {
         preload: path.join(__dirname, '../config/preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false
+        contextIsolation: false,
+        nodeIntegration: true
       }
     });
 

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>设置</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="window">
+    <div class="titlebar">
+      <span>✨ 设置</span>
+      <button class="close-btn" id="close-btn">✕</button>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="character">角色</button>
+      <button class="tab" data-tab="costume">装扮</button>
+      <button class="tab" data-tab="general">通用</button>
+    </div>
+    <div class="tab-content" id="tab-character">
+      <div class="section">
+        <label>选择角色</label>
+        <div class="character-grid">
+          <div class="character-card selected" data-char="baiyu">🐱 白玉</div>
+          <div class="character-card" data-char="rabbit">🐰 小兔</div>
+          <div class="character-card" data-char="fox">🦊 小狐</div>
+        </div>
+      </div>
+      <div class="section">
+        <label>尺寸调节</label>
+        <div class="slider-row">
+          <span>50%</span>
+          <input type="range" id="petSize" min="100" max="400" value="200">
+          <span>200%</span>
+        </div>
+      </div>
+      <div class="section">
+        <label>透明度</label>
+        <div class="slider-row">
+          <span>20%</span>
+          <input type="range" id="opacity" min="20" max="100" value="100">
+          <span>100%</span>
+        </div>
+      </div>
+    </div>
+    <div class="tab-content hidden" id="tab-costume">
+      <div class="section">
+        <label>配饰</label>
+        <div class="costume-grid">
+          <div class="costume-item selected">🎀 蝴蝶结</div>
+          <div class="costume-item">🌸 花朵</div>
+          <div class="costume-item">⭐ 星星</div>
+        </div>
+      </div>
+    </div>
+    <div class="tab-content hidden" id="tab-general">
+      <div class="section">
+        <div class="toggle-row">
+          <span>🔊 音效</span>
+          <input type="checkbox" id="soundEnabled" checked>
+        </div>
+      </div>
+      <div class="section">
+        <label>音量</label>
+        <div class="slider-row">
+          <span>0%</span>
+          <input type="range" id="soundVolume" min="0" max="100" value="50">
+          <span>100%</span>
+        </div>
+      </div>
+      <div class="section">
+        <div class="toggle-row">
+          <span>🖱️ 鼠标跟随</span>
+          <input type="checkbox" id="followMouse" checked>
+        </div>
+      </div>
+      <div class="section">
+        <div class="toggle-row">
+          <span>✨ 随机动作</span>
+          <input type="checkbox" id="randomEvents" checked>
+        </div>
+      </div>
+      <div class="section">
+        <div class="toggle-row">
+          <span>🚶 桌面走动</span>
+          <input type="checkbox" id="walkingEnabled" checked>
+        </div>
+      </div>
+      <div class="section">
+        <div class="toggle-row">
+          <span>🚀 开机自启</span>
+          <input type="checkbox" id="autoStart">
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
