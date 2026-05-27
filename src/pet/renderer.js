@@ -1,4 +1,4 @@
-const { createBaiyuSkeleton, BAIYU_PARTS, EXPRESSIONS } = require('./character/baiyu');
+const { createBaiyuSkeleton, drawCharacter, EXPRESSIONS } = require('./character/baiyu');
 const { ExpressionSystem } = require('./character/expression');
 const { PhysicsSystem } = require('./character/physics');
 
@@ -17,7 +17,6 @@ class PetRenderer {
     this.lastTime = performance.now();
     this.velocity = { x: 0, y: 0 };
     this.facing = 1;
-    this.animState = 'idle';
     this.stateTime = 0;
     this.idleAnimTime = 0;
     this.blinkTimer = 0;
@@ -28,19 +27,22 @@ class PetRenderer {
     this.walkingEnabled = true;
     this.walkTarget = null;
     this.position = { x: 0, y: 0 };
-    this.walkSpeed = 90; // pixels per second
+    this.walkSpeed = 90;
     this.nextWalkDelay = 30 + Math.random() * 60;
-    this.screenWidth = 1920; // updated via IPC
+    this.screenWidth = 1920;
 
     // Mouse follow
     this.followEnabled = true;
     this.mouseX = 0;
     this.mouseY = 0;
-    this.followRadius = 200;
+    this.followRadius = 300;
     this.eyeMaxAngle = 15;
-    this.headMaxAngle = 8;
+    this.headMaxAngle = 10;
     this.currentEyeAngle = 0;
     this.currentHeadAngle = 0;
+    this.targetHeadAngle = 0;
+    this.targetEyeScale = { left: 1, right: 1 };
+    this.targetPupilY = 0;
 
     // Random events
     this.randomEventsEnabled = true;
@@ -55,6 +57,11 @@ class PetRenderer {
 
     // Drag state
     this.isDragging = false;
+
+    // Current expression state (for smooth transitions)
+    this.currentEyeScale = { left: 1, right: 1 };
+    this.currentPupilY = 0;
+    this.currentMouthOpen = 0;
 
     this.setupCanvas();
     this.setupInteractions();
@@ -72,7 +79,6 @@ class PetRenderer {
   requestScreenSize() {
     if (window.petAPI) {
       window.petAPI.sendAction('get-screen-size');
-      // Listen for response
       window.petAPI.onStateUpdate((data) => {
         if (data.key === 'screenWidth') this.screenWidth = data.value;
       });
@@ -80,34 +86,29 @@ class PetRenderer {
   }
 
   setupInteractions() {
-    // Mouse move for follow (use screen coordinates)
     document.addEventListener('mousemove', (e) => {
       this.mouseX = e.screenX;
       this.mouseY = e.screenY;
     });
 
-    // Mouse enter: disable click-through so we can receive clicks
     this.canvas.addEventListener('mouseenter', () => {
-      this.expression.setExpression('curious', 0.1);
+      this.triggerExpression('curious');
       if (window.petAPI) window.petAPI.sendAction('mouse-enter');
     });
 
-    // Mouse leave: re-enable click-through
     this.canvas.addEventListener('mouseleave', () => {
-      this.expression.setExpression('default', 0.08);
+      this.triggerExpression('default');
       if (window.petAPI) window.petAPI.sendAction('mouse-leave');
     });
 
-    // Click
     this.canvas.addEventListener('click', () => {
       if (this.isDragging) return;
       this.triggerInteraction('click');
-      this.expression.setExpression('happy', 0.15);
+      this.triggerExpression('happy');
       this.playSound('click');
-      setTimeout(() => this.expression.setExpression('default', 0.08), 1500);
+      setTimeout(() => this.triggerExpression('default'), 1500);
     });
 
-    // Drag
     let dragStartX, dragStartY;
     this.canvas.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
@@ -123,7 +124,7 @@ class PetRenderer {
       const dy = e.screenY - dragStartY;
       if (!this.isDragging && Math.sqrt(dx*dx + dy*dy) > 5) {
         this.isDragging = true;
-        this.expression.setExpression('surprised', 0.15);
+        this.triggerExpression('surprised');
       }
       if (this.isDragging && window.petAPI) {
         window.petAPI.sendAction('drag-move', {
@@ -136,16 +137,22 @@ class PetRenderer {
     document.addEventListener('mouseup', () => {
       if (this.isDragging) {
         this.isDragging = false;
-        this.expression.setExpression('default', 0.08);
+        this.triggerExpression('default');
         if (window.petAPI) window.petAPI.sendAction('drag-end');
       }
     });
 
-    // Right-click context menu
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.showContextMenu(e.clientX, e.clientY);
     });
+  }
+
+  triggerExpression(name) {
+    const expr = EXPRESSIONS[name] || EXPRESSIONS.default;
+    this.targetEyeScale = { ...expr.eyeScale };
+    this.targetPupilY = expr.eyePupilY;
+    this.currentMouthOpen = expr.mouthOpen;
   }
 
   showContextMenu(x, y) {
@@ -157,14 +164,14 @@ class PetRenderer {
     }
 
     const items = [
-      { icon: '\u{1F50A}', label: '音效开关', action: 'toggle-sound', state: () => this.soundEnabled },
-      { icon: '\u{1F5B1}️', label: '鼠标跟随', action: 'toggle-follow', state: () => this.followEnabled },
+      { icon: '🔊', label: '音效开关', action: 'toggle-sound', state: () => this.soundEnabled },
+      { icon: '🖱️', label: '鼠标跟随', action: 'toggle-follow', state: () => this.followEnabled },
       { icon: '✨', label: '随机动作', action: 'toggle-events', state: () => this.randomEventsEnabled },
-      { icon: '\u{1F6B6}', label: '桌面走动', action: 'toggle-walking', state: () => this.walkingEnabled },
+      { icon: '🚶', label: '桌面走动', action: 'toggle-walking', state: () => this.walkingEnabled },
       { type: 'separator' },
       { icon: '⚙️', label: '设置', action: 'open-config' },
       { type: 'separator' },
-      { icon: '\u{1F6AA}', label: '退出软件', action: 'quit', color: '#e74c3c' }
+      { icon: '🚪', label: '退出软件', action: 'quit', color: '#e74c3c' }
     ];
 
     menu.innerHTML = '';
@@ -195,7 +202,6 @@ class PetRenderer {
       menu.appendChild(el);
     });
 
-    // Close on click outside
     const closeMenu = (e) => {
       if (!menu.contains(e.target)) {
         menu.style.display = 'none';
@@ -239,18 +245,16 @@ class PetRenderer {
     if (state.key === 'followMouse') this.followEnabled = state.value;
     if (state.key === 'randomEvents') this.randomEventsEnabled = state.value;
     if (state.key === 'walkingEnabled') this.walkingEnabled = state.value;
-    if (state.key === 'idleState') this.handleIdleState(state.value);
     if (state.key === 'screenWidth') this.screenWidth = state.value;
-    if (state.key === 'petSize') {
-      this.scale = state.value / 200;
-    }
+    if (state.key === 'idleState') this.handleIdleState(state.value);
+    if (state.key === 'petSize') this.scale = state.value / 200;
   }
 
   handleIdleState(state) {
     if (state === 'sleeping') {
-      this.expression.setExpression('sleeping', 0.05);
+      this.triggerExpression('sleeping');
     } else if (state === 'idle') {
-      this.expression.setExpression('sleepy', 0.08);
+      this.triggerExpression('sleepy');
     }
   }
 
@@ -303,7 +307,13 @@ class PetRenderer {
     this.updateFollow();
     this.updateRandomEvents(dt);
     this.physics.update(dt, this.velocity);
-    this.expression.update(EXPRESSIONS);
+
+    // Smooth expression transitions
+    const lerpSpeed = 0.1;
+    this.currentEyeScale.left += (this.targetEyeScale.left - this.currentEyeScale.left) * lerpSpeed;
+    this.currentEyeScale.right += (this.targetEyeScale.right - this.currentEyeScale.right) * lerpSpeed;
+    this.currentPupilY += (this.targetPupilY - this.currentPupilY) * lerpSpeed;
+
     this.skeleton.update();
   }
 
@@ -343,15 +353,13 @@ class PetRenderer {
       this.position.x += dir * speed;
       this.facing = dir;
 
-      // Edge detection using screen width
       const halfScreen = this.screenWidth / 2;
       if (this.position.x < -halfScreen + 100 || this.position.x > halfScreen - 100) {
         this.walkTarget = null;
         this.velocity = { x: 0, y: 0 };
-        this.facing = -this.facing; // turn around
+        this.facing = -this.facing;
       }
 
-      // Move the window
       if (window.petAPI) {
         window.petAPI.sendAction('walk-move', { x: this.position.x });
       }
@@ -367,12 +375,10 @@ class PetRenderer {
 
   updateFollow() {
     if (!this.followEnabled) {
-      this.currentEyeAngle *= 0.95;
-      this.currentHeadAngle *= 0.95;
+      this.targetHeadAngle *= 0.95;
       return;
     }
 
-    // Use screen center for follow calculation
     const centerX = window.screenX + window.innerWidth / 2;
     const centerY = window.screenY + window.innerHeight / 2;
     const dx = this.mouseX - centerX;
@@ -382,14 +388,12 @@ class PetRenderer {
     if (dist < this.followRadius) {
       const angle = Math.atan2(dy, dx) * 180 / Math.PI;
       const factor = 1 - dist / this.followRadius;
-      const targetEye = angle * factor * (this.eyeMaxAngle / 180);
-      const targetHead = angle * factor * (this.headMaxAngle / 180);
-      this.currentEyeAngle += (targetEye - this.currentEyeAngle) * 0.08;
-      this.currentHeadAngle += (targetHead - this.currentHeadAngle) * 0.08;
+      this.targetHeadAngle = angle * factor * (this.headMaxAngle / 180);
     } else {
-      this.currentEyeAngle += (0 - this.currentEyeAngle) * 0.04;
-      this.currentHeadAngle += (0 - this.currentHeadAngle) * 0.04;
+      this.targetHeadAngle *= 0.95;
     }
+
+    this.currentHeadAngle += (this.targetHeadAngle - this.currentHeadAngle) * 0.08;
   }
 
   updateRandomEvents(dt) {
@@ -414,12 +418,12 @@ class PetRenderer {
     for (const ev of events) {
       r -= ev.weight;
       if (r <= 0) {
-        this.expression.setExpression(ev.expr, 0.1);
+        this.triggerExpression(ev.expr);
         this.playSound('event');
         this.eventCooldown = 10;
         this.eventTimer = 0;
         this.nextEventDelay = 30 + Math.random() * 90;
-        setTimeout(() => this.expression.setExpression('default', 0.08), 3000);
+        setTimeout(() => this.triggerExpression('default'), 3000);
         break;
       }
     }
@@ -430,203 +434,43 @@ class PetRenderer {
     ctx.clearRect(0, 0, this.width, this.height);
     ctx.save();
     ctx.globalAlpha = this.opacity;
-    ctx.translate(this.width / 2, this.height / 2);
-    ctx.scale(this.scale, this.scale);
 
-    if (this.facing === -1) ctx.scale(-1, 1);
+    // Center character in canvas
+    ctx.translate(this.width / 2, this.height * 0.4);
 
-    const physics = this.physics.springs;
-    const expr = this.expression.blendValues;
+    // Apply scale
+    if (this.scale !== 1) {
+      ctx.scale(this.scale, this.scale);
+    }
 
-    // Idle animation offsets (frame-rate independent)
+    // Idle animation
     this.idleAnimTime += dt;
     const idleSway = Math.sin(this.idleAnimTime * 1.8) * 2;
     const breathe = Math.sin(this.idleAnimTime * 2) * 1.5;
-
-    // Walk bounce
     const walkBounce = Math.abs(this.velocity.x) > 0.1 ? Math.abs(Math.sin(Date.now() * 0.008)) * 3 : 0;
 
-    // Draw order: hairBack, tail, legs, body, collar, skirt, arms, head, face, hair, ears
+    // Draw the character
+    drawCharacter(ctx, {
+      facing: this.facing,
+      idleSway,
+      breathe,
+      walkBounce,
+      headAngle: this.currentHeadAngle,
+      eyeScale: this.currentEyeScale,
+      eyePupilY: this.currentPupilY,
+      mouthOpen: this.currentMouthOpen,
+      isBlinking: this.isBlinking,
+      physics: {
+        earLeft: this.physics.springs.earLeft.value,
+        earRight: this.physics.springs.earRight.value,
+        tail1: this.physics.springs.tail1.value,
+        tail2: this.physics.springs.tail2.value,
+        tail3: this.physics.springs.tail3.value,
+        hairLeft: this.physics.springs.hairLeft.value,
+        hairRight: this.physics.springs.hairRight.value
+      }
+    });
 
-    // Hair back layer
-    this.drawPart(ctx, 'hairBack', BAIYU_PARTS.hairBack, physics);
-
-    // Tail
-    this.drawPart(ctx, 'tail1', BAIYU_PARTS.tail1, physics);
-    this.drawPart(ctx, 'tail2', BAIYU_PARTS.tail2, physics);
-    this.drawPart(ctx, 'tail3', BAIYU_PARTS.tail3, physics);
-
-    // Legs (behind body)
-    this.drawPart(ctx, 'legLeft', BAIYU_PARTS.legLeft, physics);
-    this.drawPart(ctx, 'legRight', BAIYU_PARTS.legRight, physics);
-    this.drawPart(ctx, 'shoeLeft', BAIYU_PARTS.shoeLeft, physics);
-    this.drawPart(ctx, 'shoeRight', BAIYU_PARTS.shoeRight, physics);
-
-    ctx.save();
-    ctx.translate(idleSway, -walkBounce + breathe);
-
-    // Body & clothing
-    this.drawPart(ctx, 'body', BAIYU_PARTS.body, physics);
-    this.drawPart(ctx, 'collar', BAIYU_PARTS.collar, physics);
-    this.drawPart(ctx, 'bow', BAIYU_PARTS.bow, physics);
-    this.drawPart(ctx, 'skirt', BAIYU_PARTS.skirt, physics);
-    this.drawPart(ctx, 'armLeft', BAIYU_PARTS.armLeft, physics);
-
-    // Head
-    this.drawPart(ctx, 'head', BAIYU_PARTS.head, physics);
-
-    // Face (rotates with head)
-    ctx.save();
-    ctx.rotate(this.currentHeadAngle * Math.PI / 180);
-    this.drawPart(ctx, 'hairFront', BAIYU_PARTS.hairFront, physics);
-    this.drawPart(ctx, 'hairLeft', BAIYU_PARTS.hairLeft, physics);
-    this.drawPart(ctx, 'hairRight', BAIYU_PARTS.hairRight, physics);
-    this.drawEye(ctx, 'eyeLeft', BAIYU_PARTS.eyeLeft, expr);
-    this.drawEye(ctx, 'eyeRight', BAIYU_PARTS.eyeRight, expr);
-    this.drawNose(ctx);
-    this.drawMouth(ctx, BAIYU_PARTS.mouth, expr);
-    this.drawBlush(ctx, 'blushLeft', BAIYU_PARTS.blushLeft);
-    this.drawBlush(ctx, 'blushRight', BAIYU_PARTS.blushRight);
-    this.drawPart(ctx, 'earLeft', BAIYU_PARTS.earLeft, physics);
-    this.drawPart(ctx, 'earRight', BAIYU_PARTS.earRight, physics);
-    ctx.restore();
-
-    this.drawPart(ctx, 'armRight', BAIYU_PARTS.armRight, physics);
-    ctx.restore();
-
-    ctx.restore();
-  }
-
-  drawPart(ctx, name, part, physics) {
-    const bone = this.skeleton.getBone(name);
-    if (!bone || !part.path) return;
-    ctx.save();
-    ctx.translate(bone.worldX, bone.worldY);
-    ctx.rotate(bone.worldRotation * Math.PI / 180);
-    const path = new Path2D(part.path);
-    ctx.fillStyle = part.fill;
-    ctx.fill(path);
-    if (part.stroke) {
-      ctx.strokeStyle = part.stroke;
-      ctx.lineWidth = 1.5;
-      ctx.stroke(path);
-    }
-    if (part.innerPath) {
-      ctx.fillStyle = part.innerFill;
-      ctx.fill(new Path2D(part.innerPath));
-    }
-    ctx.restore();
-  }
-
-  drawEye(ctx, name, part, expr) {
-    const bone = this.skeleton.getBone(name);
-    if (!bone) return;
-    const eyeExpr = expr[name] || { scaleY: 1, pupilY: 0 };
-    ctx.save();
-    ctx.translate(bone.worldX, bone.worldY);
-
-    if (this.isBlinking) {
-      // Blink: curved line
-      ctx.strokeStyle = '#4A3B6B';
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(-7, 0);
-      ctx.quadraticCurveTo(0, 3, 7, 0);
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-
-    ctx.scale(1, eyeExpr.scaleY);
-
-    // Eye white (slightly oval)
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 9, 12, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Iris (large, colorful)
-    const gradient = ctx.createRadialGradient(0, eyeExpr.pupilY, 0, 0, eyeExpr.pupilY, 8);
-    gradient.addColorStop(0, '#9B7ED8');
-    gradient.addColorStop(0.6, part.fill);
-    gradient.addColorStop(1, '#4A3B6B');
-    ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.ellipse(0, eyeExpr.pupilY + 1, 7, 9, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Pupil
-    ctx.fillStyle = '#2D1B4E';
-    ctx.beginPath();
-    ctx.ellipse(0, eyeExpr.pupilY + 2, 3.5, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Main highlight (big)
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.beginPath();
-    ctx.ellipse(-3, -4, 3, 3.5, -0.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Secondary highlight (small)
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.beginPath();
-    ctx.ellipse(2, 2, 1.5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Eye outline
-    ctx.strokeStyle = '#4A3B6B';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 9, 12, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  drawMouth(ctx, part, expr) {
-    const bone = this.skeleton.getBone('mouth');
-    if (!bone) return;
-    const mouthExpr = expr.mouth || { open: 0 };
-    ctx.save();
-    ctx.translate(bone.worldX, bone.worldY);
-    if (mouthExpr.open > 0.1) {
-      ctx.fillStyle = '#FF9999';
-      ctx.beginPath();
-      ctx.ellipse(0, 2, 4, 3 * mouthExpr.open, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.strokeStyle = part.fill;
-    ctx.lineWidth = 1.5;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-4, 0);
-    ctx.quadraticCurveTo(0, 3, 4, 0);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  drawBlush(ctx, name, part) {
-    const bone = this.skeleton.getBone(name);
-    if (!bone) return;
-    ctx.save();
-    ctx.translate(bone.worldX, bone.worldY);
-    ctx.fillStyle = part.fill;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 8, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  drawNose(ctx) {
-    const bone = this.skeleton.getBone('head');
-    if (!bone) return;
-    ctx.save();
-    ctx.translate(bone.worldX, bone.worldY + 3);
-    ctx.fillStyle = '#FFB6C1';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 2, 1.5, 0, 0, Math.PI * 2);
-    ctx.fill();
     ctx.restore();
   }
 }
