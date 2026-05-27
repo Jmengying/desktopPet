@@ -11,6 +11,6 @@
     "electron": "^33.0.0"
   },
   "dependencies": {
-    "electron-store": "^10.0.0"
+    "electron-store": "^8.2.0"
   }
 }
